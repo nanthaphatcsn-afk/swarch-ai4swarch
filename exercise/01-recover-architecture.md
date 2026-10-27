@@ -36,23 +36,16 @@ evidence: system/online-boutique/protos/demo.proto, system/online-boutique/kuber
 
 ตรวจสอบ dependency ในตารางของ Run B **อย่างน้อยห้ารายการ** เทียบกับไฟล์จริง โดยเปิดไฟล์ที่ AI อ้างถึงและหาหลักฐาน นิสิตสามารถตรวจซอร์สโค้ดของ service ได้ด้วย เช่น `src/checkoutservice/main.go`
 
-<!-- แนวทางตรวจ (ไม่แสดงใน preview):
-1. checkout → email: หา EMAIL_SERVICE_ADDR ใน src/checkoutservice/main.go และดูว่ามีการเรียก SendOrderConfirmation จริงไหม เช็กว่า port 5000 ตรงกับ Service port ใน emailservice.yaml
-2. checkout → cart: ใน main.go มีการเรียก GetCart และ EmptyCart จริงไหม
-3. frontend → shipping: frontend เรียกแค่ GetQuote หรือเรียก ShipOrder ด้วย
-4. recommendation → catalog: src/recommendationservice/ สร้าง client ไปที่ catalog และเรียก ListProducts จริงไหม
-5. cart → redis-cart: โค้ด cartservice อ่าน REDIS_ADDR ไหม และมี store แบบอื่นที่ใช้แทนได้หรือไม่
--->
-
 | ผู้เรียก → ผู้ถูกเรียก | หลักฐานที่ AI อ้าง | ยืนยันแล้วหรือไม่ ✅ / ❌ / ❓ | สิ่งที่นิสิตพบ |
 |---|---|---|---|
-| `checkoutservice` → `emailservice` | `checkoutservice.yaml` (`EMAIL_SERVICE_ADDR="emailservice:5000"`) | | |
-| `checkoutservice` → `cartservice` | `checkoutservice.yaml` (`CART_SERVICE_ADDR="cartservice:7070"`) | | |
-| `frontend` → `shippingservice` | `frontend.yaml` (`SHIPPING_SERVICE_ADDR="shippingservice:50051"`) | | |
-| `recommendationservice` → `productcatalogservice` | `recommendationservice.yaml` (`PRODUCT_CATALOG_SERVICE_ADDR="productcatalogservice:3550"`) | | |
-| `cartservice` → `redis-cart` | `cartservice.yaml` (`REDIS_ADDR="redis-cart:6379"`) | | |
+| `checkoutservice` → `emailservice` | `checkoutservice.yaml` (`EMAIL_SERVICE_ADDR="emailservice:5000"`) | ✅ | `src/checkoutservice/main.go` อ่าน `EMAIL_SERVICE_ADDR` แล้วเปิด connection ด้วย `mustConnGRPC` และ `sendOrderConfirmation` เรียก `SendOrderConfirmation` จริงใน `PlaceOrder` ถ้าล้มเหลวจะแค่ `log.Warnf` order ไม่ล้ม |
+| `checkoutservice` → `cartservice` | `checkoutservice.yaml` (`CART_SERVICE_ADDR="cartservice:7070"`) | ✅ | `main.go` เรียก `GetCart` (ใน `getUserCart`) และ `EmptyCart` (ใน `emptyUserCart`) ตรงกับ label "Gets and empties cart" แต่ผลของ `EmptyCart` ถูกทิ้งด้วย `_ =` |
+| `checkoutservice` → `paymentservice` | `checkoutservice.yaml` (`PAYMENT_SERVICE_ADDR="paymentservice:50051"`) | ✅ | `main.go` ใน `chargeCard` เรียก `Charge` และนำ `transaction_id` มาใช้ต่อใน `PlaceOrder` |
+| `checkoutservice` → `shippingservice` | `checkoutservice.yaml` (`SHIPPING_SERVICE_ADDR="shippingservice:50051"`) | ✅ | `main.go` เรียกทั้ง `GetQuote` (ใน `quoteShipping`) และ `ShipOrder` (ใน `shipOrder`) ตรงกับ label "Quotes and ships order" |
+| `frontend` → `shippingservice` | `frontend.yaml` (`SHIPPING_SERVICE_ADDR="shippingservice:50051"`) | ❓ | `src/frontend/main.go` อ่าน env var และเปิด connection ไป shipping จริง แต่การเรียก RPC อยู่ในไฟล์ handler อื่นที่ไม่ได้ตรวจ จึงยืนยันได้แค่ว่ามี connection ไม่ได้ยืนยันว่าเรียก `GetQuote` ตาม label ใน diagram |
 
 - **สิ่งที่ผิดหรือขาดหายไป** ใน Run B (dependency ที่ไม่มีจริง, dependency ที่ขาดไป, container ที่น่าสงสัย):
+  - **dependency ที่ขาดไป (tracing):** ทั้ง `checkoutservice` และ `frontend` เปิด gRPC connection ไปที่ `COLLECTOR_SERVICE_ADDR` เมื่อ `ENABLE_TRACING=1` (ใน `initTracing()`) แต่ diagram ไม่มี collector เลย เพราะ AI ดูแค่ manifest ไม่ได้ดูโค้ด
   - **dependency ที่ขาดไป:** `frontend.yaml` มี `SHOPPING_ASSISTANT_SERVICE_ADDR` แต่ AI ไม่วาดเส้น `frontend` → `shoppingassistantservice` เพราะไม่มี manifest ของ service นี้ในโฟลเดอร์
   - **container ที่น่าสงสัย:** `loadgenerator` ถูกวาดไว้ใน `System_Boundary` เหมือนเป็นส่วนหนึ่งของระบบ ทั้งที่ถูก comment ออกจาก `kustomization.yaml` และเป็นเพียงเครื่องมือสร้าง traffic ทดสอบ
   - **label ที่เป็นการอนุมาน:** ชื่อ operation บนทุกเส้น `Rel` เช่น "Gets shipping quote" อนุมานจากชื่อ RPC ใน proto ไม่ได้มาจาก env var แต่ใน diagram ไม่ได้ติดป้าย [Inferred]
