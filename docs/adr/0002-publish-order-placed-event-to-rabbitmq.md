@@ -8,7 +8,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-25
-- **Deciders:** นันทภัทร์ จั่นสนิท (architecture)
+- **Deciders:** นันทภัทร์ จั่นสนิท (สถาปนิก Architecture)
 
 
 ## Context and problem
